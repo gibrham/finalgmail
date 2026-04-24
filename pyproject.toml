@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gcli"
+version = "0.1.0"
+description = "Secure Gmail CLI for search and label management"
+readme = "readme.md"
+requires-python = ">=3.11"
+dependencies = [
+  "google-api-python-client>=2.170.0",
+  "google-auth>=2.40.0",
+  "google-auth-oauthlib>=1.2.2",
+  "typer>=0.16.0",
+  "rich>=14.0.0",
+  "tenacity>=9.1.2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "pytest-mock>=3.14.0",
+  "ruff>=0.11.0",
+]
+
+[project.scripts]
+gcli = "gcli.cli:run"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
