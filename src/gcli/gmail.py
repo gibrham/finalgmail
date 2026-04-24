@@ -24,7 +24,7 @@ class GmailClient:
         self.service = service
 
     @classmethod
-    def from_credentials_dir(cls, credentials_dir: Path) -> "GmailClient":
+    def from_credentials_dir(cls, credentials_dir: Path) -> GmailClient:
         creds = load_credentials(credentials_dir)
         service = build("gmail", "v1", credentials=creds, cache_discovery=False)
         return cls(service)
@@ -35,7 +35,12 @@ class GmailClient:
         wait=wait_exponential(multiplier=1, min=1, max=16),
         retry=retry_if_exception(_is_retryable),
     )
-    def _list_messages(self, query: str, page_token: str | None, max_results: int) -> dict[str, Any]:
+    def _list_messages(
+        self,
+        query: str,
+        page_token: str | None,
+        max_results: int,
+    ) -> dict[str, Any]:
         return (
             self.service.users()
             .messages()
@@ -116,7 +121,11 @@ class GmailClient:
 
         while len(results) < max_results:
             batch_size = min(500, max_results - len(results))
-            response = self._list_messages(query=query, page_token=page_token, max_results=batch_size)
+            response = self._list_messages(
+                query=query,
+                page_token=page_token,
+                max_results=batch_size,
+            )
             messages = response.get("messages", [])
             for message in messages:
                 full = self._get_message(message["id"])
@@ -145,4 +154,3 @@ def _header(headers: list[dict[str, str]], name: str) -> str:
         if header.get("name", "").lower() == lowered:
             return header.get("value", "")
     return ""
-

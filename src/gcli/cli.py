@@ -17,6 +17,10 @@ app.add_typer(tag_app, name="tag")
 console = Console()
 
 
+def _resolve_credentials_dir(credentials_dir: Path | None) -> Path:
+    return credentials_dir or default_credentials_dir()
+
+
 def _validate_label_name(value: str) -> str:
     if not value.strip():
         raise typer.BadParameter("Label name cannot be empty.")
@@ -56,16 +60,17 @@ def build_search_query(
 @app.command("init")
 def init_command(
     credentials_dir: Annotated[
-        Path, typer.Option(help="Credentials directory containing secrets.json and token.json")
-    ] = default_credentials_dir(),
+        Path | None,
+        typer.Option(help="Credentials directory containing secrets.json and token.json"),
+    ] = None,
 ) -> None:
-    token_path = initialize_token(credentials_dir)
+    token_path = initialize_token(_resolve_credentials_dir(credentials_dir))
     console.print(f"[green]Token saved:[/green] {token_path}")
 
 
 @app.command("search")
 def search_command(
-    terms: Annotated[list[str], typer.Argument(help="Search terms")] = [],
+    terms: Annotated[list[str] | None, typer.Argument(help="Search terms")] = None,
     sender: Annotated[str | None, typer.Option("--from", help="Filter by sender")] = None,
     recipient: Annotated[str | None, typer.Option("--to", help="Filter by recipient")] = None,
     subject: Annotated[str | None, typer.Option(help="Filter by subject")] = None,
@@ -75,14 +80,24 @@ def search_command(
     before: Annotated[str | None, typer.Option(help="Before date (YYYY/MM/DD)")] = None,
     max_results: Annotated[int, typer.Option(min=1, max=500)] = 25,
     credentials_dir: Annotated[
-        Path, typer.Option(help="Credentials directory containing secrets.json and token.json")
-    ] = default_credentials_dir(),
+        Path | None,
+        typer.Option(help="Credentials directory containing secrets.json and token.json"),
+    ] = None,
 ) -> None:
-    query = build_search_query(terms, sender, recipient, subject, has_words, label, after, before)
+    query = build_search_query(
+        terms or [],
+        sender,
+        recipient,
+        subject,
+        has_words,
+        label,
+        after,
+        before,
+    )
     if not query:
         raise typer.BadParameter("Provide at least one term or filter.")
 
-    client = GmailClient.from_credentials_dir(credentials_dir)
+    client = GmailClient.from_credentials_dir(_resolve_credentials_dir(credentials_dir))
     messages = client.search_messages(query=query, max_results=max_results)
     if not messages:
         console.print("[yellow]No emails found.[/yellow]")
@@ -109,10 +124,11 @@ def search_command(
 def create_tag_command(
     name: Annotated[str, typer.Argument(callback=_validate_label_name, help="Label name")],
     credentials_dir: Annotated[
-        Path, typer.Option(help="Credentials directory containing secrets.json and token.json")
-    ] = default_credentials_dir(),
+        Path | None,
+        typer.Option(help="Credentials directory containing secrets.json and token.json"),
+    ] = None,
 ) -> None:
-    client = GmailClient.from_credentials_dir(credentials_dir)
+    client = GmailClient.from_credentials_dir(_resolve_credentials_dir(credentials_dir))
     created = client.ensure_nested_label(name)
     if not created:
         console.print(f"[yellow]Tag already exists:[/yellow] {name}")
@@ -126,4 +142,3 @@ def run() -> None:
 
 if __name__ == "__main__":
     run()
-
