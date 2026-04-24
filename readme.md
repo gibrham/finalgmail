@@ -62,4 +62,3 @@ gcli tag create <name>
 ```bash
 gcli tag create "Projects/2026"
 ```
-```
