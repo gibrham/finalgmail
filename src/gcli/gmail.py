@@ -163,6 +163,7 @@ def _header(headers: list[dict[str, str]], name: str) -> str:
 def _decode_body_data(data: str) -> str:
     if not data:
         return ""
+    # Gmail body data is URL-safe base64 and can omit standard "=" padding.
     padding = "=" * (-len(data) % 4)
     try:
         return base64.urlsafe_b64decode(data + padding).decode("utf-8", errors="ignore")
@@ -171,17 +172,19 @@ def _decode_body_data(data: str) -> str:
 
 
 def _extract_body_text(payload: dict[str, Any]) -> str:
-    parts = payload.get("parts", [])
-    if parts:
-        for part in parts:
-            body = _extract_body_text(part)
-            if body:
-                return body
+    def _collect_text_parts(part: dict[str, Any]) -> list[str]:
+        collected: list[str] = []
+        mime_type = part.get("mimeType", "")
+        data = part.get("body", {}).get("data", "")
+        if mime_type.startswith("text/plain"):
+            text = _decode_body_data(data)
+            if text:
+                collected.append(text)
+        for child in part.get("parts", []) or []:
+            collected.extend(_collect_text_parts(child))
+        return collected
 
-    mime_type = payload.get("mimeType", "")
-    data = payload.get("body", {}).get("data", "")
-    if mime_type.startswith("text/plain"):
-        return _decode_body_data(data)
-    if not parts:
-        return _decode_body_data(data)
-    return ""
+    text_parts = _collect_text_parts(payload)
+    if text_parts:
+        return "\n".join(text_parts)
+    return _decode_body_data(payload.get("body", {}).get("data", ""))

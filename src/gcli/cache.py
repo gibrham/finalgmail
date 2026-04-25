@@ -98,6 +98,7 @@ def load_cache(cache_path: Path) -> CachePayload:
 
 
 def resolve_latest_cache(command: str, *, base_dir: Path | None = None) -> Path | None:
+    """Return the newest cache file for a command, or None if no cache exists."""
     command_name = _normalize_command_name(command)
     cache_dir = _cache_dir(base_dir)
     if not cache_dir.exists():
@@ -109,6 +110,7 @@ def resolve_latest_cache(command: str, *, base_dir: Path | None = None) -> Path 
 
 
 def load_latest_cache(command: str, *, base_dir: Path | None = None) -> CachePayload:
+    """Load the latest cache payload for a command or raise FileNotFoundError."""
     latest = resolve_latest_cache(command, base_dir=base_dir)
     if latest is None:
         raise FileNotFoundError(f"No cache file found for command '{command}'.")

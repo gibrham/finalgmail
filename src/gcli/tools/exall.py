@@ -28,7 +28,18 @@ def _extract_body_emails(content: str | None) -> set[str]:
     return {match.lower() for match in EMAIL_PATTERN.findall(content)}
 
 
+def _resolve_message_content(message: dict[str, Any]) -> tuple[str, str]:
+    body = (message.get("body") or "").strip()
+    if body:
+        return body, "body"
+    snippet = (message.get("snippet") or "").strip()
+    if snippet:
+        return snippet, "snippet"
+    return "", "none"
+
+
 def build_email_graph(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build EmailAddress nodes and SENT_TO/MENTIONS edges from message dictionaries."""
     nodes: set[str] = set()
     edge_map: dict[tuple[str, str, str], dict[str, Any]] = {}
 
@@ -43,7 +54,8 @@ def build_email_graph(messages: list[dict[str, Any]]) -> dict[str, Any]:
         recipients.update(_parse_header_emails(message.get("to")))
         recipients.update(_parse_header_emails(message.get("cc")))
         recipients.update(_parse_header_emails(message.get("bcc")))
-        mentions = _extract_body_emails(message.get("body") or message.get("snippet"))
+        content, content_source = _resolve_message_content(message)
+        mentions = _extract_body_emails(content)
 
         timestamp = message.get("date")
         source_ref = message.get("id") or message.get("threadId")
@@ -58,11 +70,14 @@ def build_email_graph(messages: list[dict[str, Any]]) -> dict[str, Any]:
                     "from": sender,
                     "to": recipient,
                     "timestamp": timestamp,
+                    "timestamps": [],
                     "source_references": [],
                     "frequency": 0,
                 },
             )
             edge["frequency"] += 1
+            if timestamp and timestamp not in edge["timestamps"]:
+                edge["timestamps"].append(timestamp)
             if source_ref and source_ref not in edge["source_references"]:
                 edge["source_references"].append(source_ref)
             if not edge.get("timestamp") and timestamp:
@@ -80,13 +95,19 @@ def build_email_graph(messages: list[dict[str, Any]]) -> dict[str, Any]:
                     "from": sender,
                     "to": mentioned,
                     "timestamp": timestamp,
+                    "timestamps": [],
                     "source_references": [],
+                    "content_sources": [],
                     "frequency": 0,
                 },
             )
             edge["frequency"] += 1
+            if timestamp and timestamp not in edge["timestamps"]:
+                edge["timestamps"].append(timestamp)
             if source_ref and source_ref not in edge["source_references"]:
                 edge["source_references"].append(source_ref)
+            if content_source not in edge["content_sources"]:
+                edge["content_sources"].append(content_source)
             if not edge.get("timestamp") and timestamp:
                 edge["timestamp"] = timestamp
 
@@ -131,6 +152,7 @@ def exall_command(
     ] = None,
     cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
 ) -> None:
+    """Extract relationship edges from cached search data and render/save the graph payload."""
     source_command = from_cache or "search"
     try:
         payload = load_latest_cache(source_command)
