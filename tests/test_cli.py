@@ -72,7 +72,10 @@ def test_search_cache_option_writes_cache(mocker, tmp_path: Path) -> None:
         }
     ]
     mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
-    write_cache_mock = mocker.patch("gcli.cli.write_cache", return_value=tmp_path / ".cache/search_1.jsonl")
+    write_cache_mock = mocker.patch(
+        "gcli.cli.write_cache",
+        return_value=tmp_path / ".cache/search_1.jsonl",
+    )
 
     result = runner.invoke(app, ["search", "invoice", "--cache"])
     assert result.exit_code == 0
