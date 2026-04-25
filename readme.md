@@ -8,6 +8,8 @@ Secure Gmail CLI built with Typer.
 pip install -e ".[dev]"
 ```
 
+This project uses the `ladybug` graph database package to materialize extracted relationship graphs.
+
 ## Setup
 
 1. Create `./credentials/secrets.json` from your Google OAuth desktop app credentials.
@@ -96,4 +98,27 @@ gcli tools exall [options]
 gcli tools exall
 gcli tools exall --from-cache search
 gcli tools exall --cache
+```
+
+### gcli tools visualize
+
+Builds an interactive Cytoscape.js HTML graph from cached `exall` output.
+
+**Usage:**
+
+```bash
+gcli tools visualize [options]
+```
+
+**Options:**
+
+- `--from-cache <command>`: Load latest cache from command (default `exall`)
+- `--output <path>`: Output HTML file path (default `graph.html`)
+
+**Examples:**
+
+```bash
+gcli tools visualize
+gcli tools visualize --output ./reports/email-graph.html
+gcli tools visualize --from-cache exall --output graph.html
 ```

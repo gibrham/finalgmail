@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import json
 import re
 from collections import defaultdict
+from datetime import UTC, datetime
 from email.utils import getaddresses
+from pathlib import Path
 from typing import Annotated, Any
 
 import typer
+from ladybug import Connection, Database
 from rich.console import Console
 from rich.table import Table
 
@@ -38,8 +42,126 @@ def _resolve_message_content(message: dict[str, Any]) -> tuple[str, str]:
     return "", "none"
 
 
-def build_email_graph(messages: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build EmailAddress nodes and SENT_TO/MENTIONS edges from message dictionaries."""
+def _escape_query_value(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def _graph_db_path(base_dir: Path | None = None) -> Path:
+    cache_dir = (base_dir or Path.cwd()) / ".cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    return cache_dir / f"exall_graph_{timestamp}.lbug"
+
+
+def _materialize_graph_in_ladybug(
+    nodes: set[str],
+    edges: list[dict[str, Any]],
+    *,
+    db_path: Path,
+) -> dict[str, Any]:
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = Database(str(db_path))
+    conn = Connection(db)
+    try:
+        conn.execute(
+            "CREATE NODE TABLE IF NOT EXISTS EmailAddress(email STRING, PRIMARY KEY (email));"
+        )
+        conn.execute(
+            "CREATE REL TABLE IF NOT EXISTS SENT_TO("
+            "FROM EmailAddress TO EmailAddress,"
+            " timestamp STRING, source_ref STRING, frequency INT64,"
+            " source_references STRING, timestamps STRING, content_sources STRING"
+            ");"
+        )
+        conn.execute(
+            "CREATE REL TABLE IF NOT EXISTS MENTIONS("
+            "FROM EmailAddress TO EmailAddress,"
+            " timestamp STRING, source_ref STRING, frequency INT64,"
+            " source_references STRING, timestamps STRING, content_sources STRING"
+            ");"
+        )
+
+        for email in sorted(nodes):
+            escaped_email = _escape_query_value(email)
+            conn.execute(f"MERGE (:EmailAddress {{email:'{escaped_email}'}})")
+
+        for edge in edges:
+            rel_type = edge["type"]
+            source = _escape_query_value(edge["from"])
+            target = _escape_query_value(edge["to"])
+            timestamp = _escape_query_value(edge.get("timestamp") or "")
+            source_ref = _escape_query_value((edge.get("source_references") or [""])[0] or "")
+            source_references = _escape_query_value(json.dumps(edge.get("source_references") or []))
+            timestamps = _escape_query_value(json.dumps(edge.get("timestamps") or []))
+            content_sources = _escape_query_value(json.dumps(edge.get("content_sources") or []))
+            frequency = int(edge.get("frequency", 0))
+            conn.execute(
+                "MATCH (a:EmailAddress {email:'"
+                + source
+                + "'}), (b:EmailAddress {email:'"
+                + target
+                + "'}) "
+                + "MERGE (a)-[r:"
+                + rel_type
+                + "]->(b) "
+                + "SET r.timestamp='"
+                + timestamp
+                + "', r.source_ref='"
+                + source_ref
+                + "', r.frequency="
+                + str(frequency)
+                + ", r.source_references='"
+                + source_references
+                + "', r.timestamps='"
+                + timestamps
+                + "', r.content_sources='"
+                + content_sources
+                + "'"
+            )
+
+        node_rows = conn.execute(
+            "MATCH (n:EmailAddress) RETURN n.email AS email ORDER BY n.email"
+        ).get_all()
+        sent_rows = conn.execute(
+            "MATCH (a:EmailAddress)-[r:SENT_TO]->(b:EmailAddress) "
+            "RETURN a.email, b.email, r.timestamp, r.source_references, r.timestamps, "
+            "r.content_sources, r.frequency ORDER BY a.email, b.email"
+        ).get_all()
+        mention_rows = conn.execute(
+            "MATCH (a:EmailAddress)-[r:MENTIONS]->(b:EmailAddress) "
+            "RETURN a.email, b.email, r.timestamp, r.source_references, r.timestamps, "
+            "r.content_sources, r.frequency ORDER BY a.email, b.email"
+        ).get_all()
+    finally:
+        conn.close()
+        db.close()
+
+    nodes_payload = [{"type": "EmailAddress", "email": row[0]} for row in node_rows]
+    edges_payload: list[dict[str, Any]] = []
+    for rel_type, rows in [("SENT_TO", sent_rows), ("MENTIONS", mention_rows)]:
+        for row in rows:
+            source_references = json.loads(row[3] or "[]")
+            timestamps = json.loads(row[4] or "[]")
+            content_sources = json.loads(row[5] or "[]")
+            edges_payload.append(
+                {
+                    "type": rel_type,
+                    "from": row[0],
+                    "to": row[1],
+                    "timestamp": row[2] or "",
+                    "source_references": source_references,
+                    "timestamps": timestamps,
+                    "content_sources": content_sources,
+                    "frequency": int(row[6] or 0),
+                }
+            )
+    return {"nodes": nodes_payload, "edges": edges_payload, "ladybug_db_path": str(db_path)}
+
+
+def build_email_graph(
+    messages: list[dict[str, Any]], *, db_path: Path | None = None
+) -> dict[str, Any]:
+    """Build an EmailAddress graph from messages and materialize it in Ladybug."""
     nodes: set[str] = set()
     edge_map: dict[tuple[str, str, str], dict[str, Any]] = {}
 
@@ -111,12 +233,11 @@ def build_email_graph(messages: list[dict[str, Any]]) -> dict[str, Any]:
             if not edge.get("timestamp") and timestamp:
                 edge["timestamp"] = timestamp
 
-    nodes_payload = [{"type": "EmailAddress", "email": email} for email in sorted(nodes)]
     edges_payload = sorted(
         edge_map.values(),
         key=lambda edge: (edge["type"], edge["from"], edge["to"]),
     )
-    return {"nodes": nodes_payload, "edges": edges_payload}
+    return _materialize_graph_in_ladybug(nodes, edges_payload, db_path=db_path or _graph_db_path())
 
 
 def _render_edges(edges: list[dict[str, Any]]) -> None:
@@ -152,7 +273,7 @@ def exall_command(
     ] = None,
     cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
 ) -> None:
-    """Extract relationship edges from cached search data and render/save the graph payload."""
+    """Extract relationship edges from cached search data using Ladybug graph materialization."""
     source_command = from_cache or "search"
     try:
         payload = load_latest_cache(source_command)
@@ -167,10 +288,15 @@ def exall_command(
 
     _render_edges(edges)
     _render_summary(edges)
+    console.print(f"[green]Ladybug graph:[/green] {graph['ladybug_db_path']}")
     if cache_output:
         cache_path = write_cache(
             command="exall",
-            args={"from_cache": source_command, "source_cache_file": payload.path.name},
+            args={
+                "from_cache": source_command,
+                "source_cache_file": payload.path.name,
+                "ladybug_db_path": graph["ladybug_db_path"],
+            },
             entries=[graph],
         )
         console.print(f"[green]Saved cache:[/green] {cache_path}")

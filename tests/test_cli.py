@@ -119,3 +119,32 @@ def test_tools_exall_respects_from_cache_override(mocker, tmp_path: Path) -> Non
     result = runner.invoke(app, ["tools", "exall", "--from-cache", "custom_search"])
     assert result.exit_code == 0
     load_mock.assert_called_once_with("custom_search")
+
+
+def test_tools_visualize_writes_html(mocker, tmp_path: Path) -> None:
+    payload = CachePayload(
+        metadata=CacheMetadata(command="exall", timestamp="20260101T000000Z", args={}),
+        entries=[
+            {
+                "nodes": [{"type": "EmailAddress", "email": "alice@example.com"}],
+                "edges": [
+                    {
+                        "type": "SENT_TO",
+                        "from": "alice@example.com",
+                        "to": "bob@example.com",
+                        "frequency": 2,
+                    }
+                ],
+            }
+        ],
+        path=tmp_path / ".cache/exall_20260101T000000Z.jsonl",
+    )
+    load_mock = mocker.patch("gcli.tools.visualize.load_latest_cache", return_value=payload)
+    output_path = tmp_path / "graph.html"
+
+    result = runner.invoke(app, ["tools", "visualize", "--output", str(output_path)])
+    assert result.exit_code == 0
+    load_mock.assert_called_once_with("exall")
+    html = output_path.read_text(encoding="utf-8")
+    assert "cytoscape" in html
+    assert "alice@example.com" in html
