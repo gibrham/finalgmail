@@ -40,11 +40,18 @@ gcli search <name> [options]
 - `--label`: Filter by label
 - `--after`: Filter by date after
 - `--before`: Filter by date before
+- `--cache`: Save results to `.cache/search_<timestamp>.jsonl`
 
 **Example:**
 
 ```bash
 gcli search "invoice" --from sender@example.com --label Finance
+```
+
+Cache for chaining:
+
+```bash
+gcli search "invoice" --cache
 ```
 
 ### gcli tag create
@@ -61,4 +68,32 @@ gcli tag create <name>
 
 ```bash
 gcli tag create "Projects/2026"
+```
+
+### gcli tools exall
+
+Extracts sender/recipient communication and content mentions from cached search results, then builds a directional email relationship graph model:
+
+- Node type: `EmailAddress`
+- Edge types:
+  - `SENT_TO` (`from` sender → `to`/`cc`/`bcc` recipients)
+  - `MENTIONS` (sender → email addresses mentioned in content)
+
+**Usage:**
+
+```bash
+gcli tools exall [options]
+```
+
+**Options:**
+
+- `--from-cache <command>`: Load latest cache from the specified command (default upstream is `search`)
+- `--cache`: Save graph output to `.cache/exall_<timestamp>.jsonl`
+
+**Examples:**
+
+```bash
+gcli tools exall
+gcli tools exall --from-cache search
+gcli tools exall --cache
 ```

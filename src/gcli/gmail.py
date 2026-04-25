@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -61,8 +62,7 @@ class GmailClient:
             .get(
                 userId="me",
                 id=message_id,
-                format="metadata",
-                metadataHeaders=["From", "Subject", "Date"],
+                format="full",
             )
             .execute()
         )
@@ -134,9 +134,13 @@ class GmailClient:
                     {
                         "id": full.get("id", ""),
                         "from": _header(headers, "From"),
+                        "to": _header(headers, "To"),
+                        "cc": _header(headers, "Cc"),
+                        "bcc": _header(headers, "Bcc"),
                         "subject": _header(headers, "Subject"),
                         "date": _header(headers, "Date"),
                         "snippet": full.get("snippet", ""),
+                        "body": _extract_body_text(full.get("payload", {})),
                     }
                 )
                 if len(results) >= max_results:
@@ -153,4 +157,31 @@ def _header(headers: list[dict[str, str]], name: str) -> str:
     for header in headers:
         if header.get("name", "").lower() == lowered:
             return header.get("value", "")
+    return ""
+
+
+def _decode_body_data(data: str) -> str:
+    if not data:
+        return ""
+    padding = "=" * (-len(data) % 4)
+    try:
+        return base64.urlsafe_b64decode(data + padding).decode("utf-8", errors="ignore")
+    except (ValueError, TypeError):
+        return ""
+
+
+def _extract_body_text(payload: dict[str, Any]) -> str:
+    parts = payload.get("parts", [])
+    if parts:
+        for part in parts:
+            body = _extract_body_text(part)
+            if body:
+                return body
+
+    mime_type = payload.get("mimeType", "")
+    data = payload.get("body", {}).get("data", "")
+    if mime_type.startswith("text/plain"):
+        return _decode_body_data(data)
+    if not parts:
+        return _decode_body_data(data)
     return ""

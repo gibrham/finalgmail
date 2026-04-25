@@ -8,12 +8,15 @@ from rich.console import Console
 from rich.table import Table
 
 from gcli.auth import initialize_token
+from gcli.cache import write_cache
 from gcli.config import default_credentials_dir
 from gcli.gmail import GmailClient
+from gcli.tools import app as tools_app
 
 app = typer.Typer(help="Gmail CLI")
 tag_app = typer.Typer(help="Tag operations")
 app.add_typer(tag_app, name="tag")
+app.add_typer(tools_app, name="tools")
 console = Console()
 
 
@@ -79,6 +82,7 @@ def search_command(
     after: Annotated[str | None, typer.Option(help="After date (YYYY/MM/DD)")] = None,
     before: Annotated[str | None, typer.Option(help="Before date (YYYY/MM/DD)")] = None,
     max_results: Annotated[int, typer.Option(min=1, max=500)] = 25,
+    cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
     credentials_dir: Annotated[
         Path | None,
         typer.Option(help="Credentials directory containing secrets.json and token.json"),
@@ -118,6 +122,23 @@ def search_command(
             message["snippet"],
         )
     console.print(table)
+    if cache_output:
+        cache_path = write_cache(
+            command="search",
+            args={
+                "terms": terms or [],
+                "from": sender,
+                "to": recipient,
+                "subject": subject,
+                "has_words": has_words,
+                "label": label,
+                "after": after,
+                "before": before,
+                "max_results": max_results,
+            },
+            entries=messages,
+        )
+        console.print(f"[green]Saved cache:[/green] {cache_path}")
 
 
 @tag_app.command("create")
