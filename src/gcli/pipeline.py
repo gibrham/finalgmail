@@ -185,8 +185,8 @@ def run_pipeline(
             cmd.execute(step_inputs, run_id)
             if not verbose:
                 console.print(f"[STEP] {step.id} .......... OK")
-        except Exception:
+        except Exception as exc:
             if not verbose:
-                console.print(f"[STEP] {step.id} .......... FAIL")
+                console.print(f"[STEP] {step.id} .......... FAIL ({type(exc).__name__}: {exc})")
             raise
     console.print("[DONE] Pipeline completed successfully")
