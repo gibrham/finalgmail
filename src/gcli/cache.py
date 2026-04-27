@@ -16,6 +16,7 @@ class CacheMetadata:
     command: str
     timestamp: str
     args: dict[str, Any]
+    run_id: str | None = None
 
 
 @dataclass
@@ -44,15 +45,24 @@ def write_cache(
     *,
     base_dir: Path | None = None,
     timestamp: str | None = None,
+    run_id: str | None = None,
 ) -> Path:
     command_name = _normalize_command_name(command)
     cache_dir = _cache_dir(base_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     cache_timestamp = timestamp or _current_timestamp()
-    cache_path = cache_dir / f"{command_name}_{cache_timestamp}.jsonl"
+    file_stem = f"{command_name}_{cache_timestamp}"
+    if run_id:
+        file_stem = f"{command_name}_{run_id}_{cache_timestamp}"
+    cache_path = cache_dir / f"{file_stem}.jsonl"
 
-    metadata = CacheMetadata(command=command_name, timestamp=cache_timestamp, args=args)
+    metadata = CacheMetadata(
+        command=command_name,
+        timestamp=cache_timestamp,
+        args=args,
+        run_id=run_id,
+    )
     with cache_path.open("w", encoding="utf-8") as cache_file:
         cache_file.write(
             json.dumps(
@@ -62,6 +72,7 @@ def write_cache(
                         "command": metadata.command,
                         "timestamp": metadata.timestamp,
                         "args": metadata.args,
+                        "run_id": metadata.run_id,
                     },
                 }
             )
@@ -86,6 +97,7 @@ def load_cache(cache_path: Path) -> CachePayload:
                     command=meta.get("command", ""),
                     timestamp=meta.get("timestamp", ""),
                     args=meta.get("args", {}),
+                    run_id=meta.get("run_id"),
                 )
             elif record_type == DATA_TYPE:
                 entry = record.get("entry")
@@ -97,21 +109,40 @@ def load_cache(cache_path: Path) -> CachePayload:
     return CachePayload(metadata=metadata, entries=entries, path=cache_path)
 
 
-def resolve_latest_cache(command: str, *, base_dir: Path | None = None) -> Path | None:
-    """Return the newest cache file for a command, or None if no cache exists."""
+def resolve_latest_cache(
+    command: str,
+    *,
+    base_dir: Path | None = None,
+    run_id: str | None = None,
+) -> Path | None:
+    """Return the newest cache file for a command, optionally constrained by run_id."""
     command_name = _normalize_command_name(command)
     cache_dir = _cache_dir(base_dir)
     if not cache_dir.exists():
         return None
-    matches = sorted(cache_dir.glob(f"{command_name}_*.jsonl"))
+    matches = sorted(cache_dir.glob(f"{command_name}_*.jsonl"), reverse=True)
     if not matches:
         return None
-    return matches[-1]
+    for match in matches:
+        payload = load_cache(match)
+        if payload.metadata.command != command_name:
+            continue
+        if run_id is None and payload.metadata.run_id is None:
+            return match
+        if run_id is not None and payload.metadata.run_id == run_id:
+            return match
+    return None
 
 
-def load_latest_cache(command: str, *, base_dir: Path | None = None) -> CachePayload:
-    """Load the latest cache payload for a command or raise FileNotFoundError."""
-    latest = resolve_latest_cache(command, base_dir=base_dir)
+def load_latest_cache(
+    command: str,
+    *,
+    base_dir: Path | None = None,
+    run_id: str | None = None,
+) -> CachePayload:
+    """Load latest cache payload for a command, optionally constrained by run_id."""
+    latest = resolve_latest_cache(command, base_dir=base_dir, run_id=run_id)
     if latest is None:
-        raise FileNotFoundError(f"No cache file found for command '{command}'.")
+        suffix = f" with run_id '{run_id}'" if run_id else ""
+        raise FileNotFoundError(f"No cache file found for command '{command}'{suffix}.")
     return load_cache(latest)

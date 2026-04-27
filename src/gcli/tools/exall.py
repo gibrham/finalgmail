@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from gcli.cache import load_latest_cache, write_cache
+from gcli.command_meta import CommandInput, CommandSpec, command_contract
 
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 
@@ -266,17 +267,34 @@ def _render_summary(edges: list[dict[str, Any]]) -> None:
     console.print(f"[green]Relationship totals:[/green] {summary}")
 
 
+EXALL_COMMAND_SPEC = CommandSpec(
+    command="gcli tools exall",
+    interactive=False,
+    inputs=(
+        CommandInput(name="from_cache", required=False, source="cache"),
+        CommandInput(name="cache_output", required=False, source="default"),
+        CommandInput(name="cache_run_id", required=False, source="cache"),
+    ),
+    outputs=("graph_payload_cache", "ladybug_db"),
+)
+
+
+@command_contract(EXALL_COMMAND_SPEC)
 def exall_command(
     from_cache: Annotated[
         str | None,
         typer.Option("--from-cache", help="Load latest cache from a specific command"),
     ] = None,
     cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
+    cache_run_id: Annotated[
+        str | None,
+        typer.Option("--cache-run-id", help="Pipeline cache run identifier", hidden=True),
+    ] = None,
 ) -> None:
     """Extract relationship edges from cached search data using Ladybug graph materialization."""
     source_command = from_cache or "search"
     try:
-        payload = load_latest_cache(source_command)
+        payload = load_latest_cache(source_command, run_id=cache_run_id)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
@@ -298,5 +316,6 @@ def exall_command(
                 "ladybug_db_path": graph["ladybug_db_path"],
             },
             entries=[graph],
+            run_id=cache_run_id,
         )
         console.print(f"[green]Saved cache:[/green] {cache_path}")

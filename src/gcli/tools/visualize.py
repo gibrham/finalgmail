@@ -8,8 +8,20 @@ import typer
 from rich.console import Console
 
 from gcli.cache import load_latest_cache
+from gcli.command_meta import CommandInput, CommandSpec, command_contract
 
 console = Console()
+
+VISUALIZE_COMMAND_SPEC = CommandSpec(
+    command="gcli tools visualize",
+    interactive=False,
+    inputs=(
+        CommandInput(name="from_cache", required=False, source="cache"),
+        CommandInput(name="output", required=False, source="default"),
+        CommandInput(name="cache_run_id", required=False, source="cache"),
+    ),
+    outputs=("html_file",),
+)
 
 
 def _to_cytoscape_elements(graph: dict[str, Any]) -> list[dict[str, Any]]:
@@ -112,6 +124,7 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
 """
 
 
+@command_contract(VISUALIZE_COMMAND_SPEC)
 def visualize_command(
     from_cache: Annotated[
         str | None,
@@ -121,11 +134,15 @@ def visualize_command(
         Path,
         typer.Option("--output", help="Output HTML file path"),
     ] = Path("graph.html"),
+    cache_run_id: Annotated[
+        str | None,
+        typer.Option("--cache-run-id", help="Pipeline cache run identifier", hidden=True),
+    ] = None,
 ) -> None:
     """Render a cached graph as a Cytoscape.js HTML visualization."""
     source_command = from_cache or "exall"
     try:
-        payload = load_latest_cache(source_command)
+        payload = load_latest_cache(source_command, run_id=cache_run_id)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
 

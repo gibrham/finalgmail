@@ -122,3 +122,30 @@ gcli tools visualize
 gcli tools visualize --output ./reports/email-graph.html
 gcli tools visualize --from-cache exall --output graph.html
 ```
+
+### gcli run
+
+Runs a named pipeline from JSON configuration and orchestrates command execution with upfront input
+collection.
+
+**Usage:**
+
+```bash
+gcli run <pipeline_name> [options]
+```
+
+**Options:**
+
+- `--from <step>`: Start from a step id
+- `--until <step>`: Stop after a step id
+- `--verbose`: Print detailed step logs and command execution lines
+- `--iext`: Interactive extended mode (prompts optional user inputs too)
+- `--input/-i key=value`: Provide upfront input values (can be repeated)
+
+**Example pipeline:** `emailgph`
+
+```bash
+gcli run emailgph --input search.terms="invoice"
+gcli run emailgph --iext
+gcli run emailgph --from extract --until visualize --input search.terms="invoice"
+```
