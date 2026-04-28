@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 from typing import Any
 
@@ -61,8 +62,7 @@ class GmailClient:
             .get(
                 userId="me",
                 id=message_id,
-                format="metadata",
-                metadataHeaders=["From", "Subject", "Date"],
+                format="full",
             )
             .execute()
         )
@@ -134,9 +134,13 @@ class GmailClient:
                     {
                         "id": full.get("id", ""),
                         "from": _header(headers, "From"),
+                        "to": _header(headers, "To"),
+                        "cc": _header(headers, "Cc"),
+                        "bcc": _header(headers, "Bcc"),
                         "subject": _header(headers, "Subject"),
                         "date": _header(headers, "Date"),
                         "snippet": full.get("snippet", ""),
+                        "body": _extract_body_text(full.get("payload", {})),
                     }
                 )
                 if len(results) >= max_results:
@@ -154,3 +158,33 @@ def _header(headers: list[dict[str, str]], name: str) -> str:
         if header.get("name", "").lower() == lowered:
             return header.get("value", "")
     return ""
+
+
+def _decode_body_data(data: str) -> str:
+    if not data:
+        return ""
+    # Gmail body data is URL-safe base64 and can omit standard "=" padding.
+    padding = "=" * (-len(data) % 4)
+    try:
+        return base64.urlsafe_b64decode(data + padding).decode("utf-8", errors="ignore")
+    except (ValueError, TypeError):
+        return ""
+
+
+def _extract_body_text(payload: dict[str, Any]) -> str:
+    def _collect_text_parts(part: dict[str, Any]) -> list[str]:
+        collected: list[str] = []
+        mime_type = part.get("mimeType", "")
+        data = part.get("body", {}).get("data", "")
+        if mime_type.startswith("text/plain"):
+            text = _decode_body_data(data)
+            if text:
+                collected.append(text)
+        for child in part.get("parts", []) or []:
+            collected.extend(_collect_text_parts(child))
+        return collected
+
+    text_parts = _collect_text_parts(payload)
+    if text_parts:
+        return "\n".join(text_parts)
+    return _decode_body_data(payload.get("body", {}).get("data", ""))

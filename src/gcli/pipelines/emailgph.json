@@ -1,0 +1,17 @@
+{
+  "name": "emailgph",
+  "steps": [
+    {
+      "id": "search",
+      "command": "gcli search"
+    },
+    {
+      "id": "extract",
+      "command": "gcli tools exall"
+    },
+    {
+      "id": "visualize",
+      "command": "gcli tools visualize"
+    }
+  ]
+}

@@ -15,6 +15,7 @@ dependencies = [
   "typer>=0.16.0",
   "rich>=14.0.0",
   "tenacity>=9.1.2",
+  "ladybug>=0.15.3",
 ]
 
 [project.optional-dependencies]
@@ -33,10 +34,12 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+gcli = ["pipelines/*.json"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-
