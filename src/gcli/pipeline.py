@@ -13,7 +13,7 @@ from rich.console import Console
 from gcli.command_meta import CommandInput, CommandSpec
 
 
-@dataclass
+@dataclass(frozen=True)
 class PipelineStep:
     id: str
     command: str
