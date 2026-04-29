@@ -115,12 +115,16 @@ class GmailClient:
             created.append(candidate)
         return created
 
-    def search_messages(self, query: str, max_results: int) -> list[dict[str, str]]:
+    def search_messages(
+        self, query: str, max_results: int = 25, match_all: bool = False
+    ) -> list[dict[str, str]]:
         results: list[dict[str, str]] = []
         page_token: str | None = None
 
-        while len(results) < max_results:
-            batch_size = min(500, max_results - len(results))
+        while True:
+            if not match_all and len(results) >= max_results:
+                break
+            batch_size = 500 if match_all else min(500, max_results - len(results))
             response = self._list_messages(
                 query=query,
                 page_token=page_token,
@@ -143,7 +147,7 @@ class GmailClient:
                         "body": _extract_body_text(full.get("payload", {})),
                     }
                 )
-                if len(results) >= max_results:
+                if not match_all and len(results) >= max_results:
                     break
             page_token = response.get("nextPageToken")
             if not page_token:

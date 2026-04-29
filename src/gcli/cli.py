@@ -66,6 +66,7 @@ SEARCH_COMMAND_SPEC = CommandSpec(
             prompt="Before date (YYYY/MM/DD)",
         ),
         CommandInput(name="max_results", required=False, source="default"),
+        CommandInput(name="match_all", required=False, source="default"),
         CommandInput(name="credentials_dir", required=False, source="default"),
         CommandInput(name="cache_output", required=False, source="default"),
         CommandInput(name="cache_run_id", required=False, source="cache"),
@@ -137,6 +138,9 @@ def search_command(
     after: Annotated[str | None, typer.Option(help="After date (YYYY/MM/DD)")] = None,
     before: Annotated[str | None, typer.Option(help="Before date (YYYY/MM/DD)")] = None,
     max_results: Annotated[int, typer.Option(min=1, max=500)] = 25,
+    match_all: Annotated[
+        bool, typer.Option("--match-all", help="Return all results (ignores --max-results)")
+    ] = False,
     cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
     credentials_dir: Annotated[
         Path | None,
@@ -161,7 +165,7 @@ def search_command(
         raise typer.BadParameter("Provide at least one term or filter.")
 
     client = GmailClient.from_credentials_dir(_resolve_credentials_dir(credentials_dir))
-    messages = client.search_messages(query=query, max_results=max_results)
+    messages = client.search_messages(query=query, max_results=max_results, match_all=match_all)
     if not messages:
         console.print("[yellow]No emails found.[/yellow]")
         return
@@ -206,6 +210,7 @@ def _execute_search_step(step_inputs: dict[str, str | None], run_id: str) -> Non
     terms = terms_raw.split() if terms_raw else []
     max_results_raw = (step_inputs.get("max_results") or "").strip()
     max_results = int(max_results_raw) if max_results_raw else 25
+    match_all = (step_inputs.get("match_all") or "").strip().lower() == "true"
     credentials_dir_raw = (step_inputs.get("credentials_dir") or "").strip()
     credentials_dir = Path(credentials_dir_raw) if credentials_dir_raw else None
     search_command(
@@ -218,6 +223,7 @@ def _execute_search_step(step_inputs: dict[str, str | None], run_id: str) -> Non
         after=step_inputs.get("after"),
         before=step_inputs.get("before"),
         max_results=max_results,
+        match_all=match_all,
         cache_output=True,
         credentials_dir=credentials_dir,
         cache_run_id=run_id,

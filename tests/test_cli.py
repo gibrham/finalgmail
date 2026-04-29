@@ -160,6 +160,30 @@ def test_non_interactive_visualize_fails_without_cache_and_never_prompts(
     prompt_mock.assert_not_called()
 
 
+def test_search_match_all_passes_flag_to_client(mocker, tmp_path: Path) -> None:
+    fake_client = mocker.Mock()
+    fake_client.search_messages.return_value = []
+    mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
+
+    result = runner.invoke(app, ["search", "invoice", "--match-all"])
+    assert result.exit_code == 0
+    fake_client.search_messages.assert_called_once()
+    _, kwargs = fake_client.search_messages.call_args
+    assert kwargs.get("match_all") is True
+
+
+def test_search_without_match_all_uses_default_max_results(mocker, tmp_path: Path) -> None:
+    fake_client = mocker.Mock()
+    fake_client.search_messages.return_value = []
+    mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
+
+    result = runner.invoke(app, ["search", "invoice"])
+    assert result.exit_code == 0
+    fake_client.search_messages.assert_called_once()
+    _, kwargs = fake_client.search_messages.call_args
+    assert kwargs.get("match_all") is False
+
+
 def test_non_interactive_exall_fails_without_cache_and_never_prompts(
     mocker, monkeypatch, tmp_path: Path
 ) -> None:
