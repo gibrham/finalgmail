@@ -59,10 +59,11 @@ def test_search_messages_match_all_fetches_all_pages() -> None:
     )
 
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", match_all=True)
+    result = client.search_messages(query="invoice", match_all=True)
 
-    assert len(results) == 6
-    assert [r["id"] for r in results] == [str(i) for i in range(1, 7)]
+    assert len(result.messages) == 6
+    assert [r["id"] for r in result.messages] == [str(i) for i in range(1, 7)]
+    assert result.pages == 2
 
     # Verify list was called twice with correct page tokens
     list_calls = service.users.return_value.messages.return_value.list.call_args_list
@@ -88,9 +89,10 @@ def test_search_messages_match_all_three_pages() -> None:
     )
 
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", match_all=True)
+    result = client.search_messages(query="invoice", match_all=True)
 
-    assert len(results) == 9
+    assert len(result.messages) == 9
+    assert result.pages == 3
     list_calls = service.users.return_value.messages.return_value.list.call_args_list
     assert len(list_calls) == 3
 
@@ -109,9 +111,10 @@ def test_search_messages_match_all_single_page() -> None:
     )
 
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", match_all=True)
+    result = client.search_messages(query="invoice", match_all=True)
 
-    assert len(results) == 3
+    assert len(result.messages) == 3
+    assert result.pages == 1
     list_calls = service.users.return_value.messages.return_value.list.call_args_list
     assert len(list_calls) == 1
 
@@ -120,9 +123,10 @@ def test_search_messages_match_all_empty_results() -> None:
     """match_all=True with zero matching messages returns an empty list."""
     service = _make_service(list_side_effect=[{"messages": []}])
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", match_all=True)
+    result = client.search_messages(query="invoice", match_all=True)
 
-    assert results == []
+    assert result.messages == []
+    assert result.pages == 1
     service.users.return_value.messages.return_value.list.assert_called_once()
     service.users.return_value.messages.return_value.get.assert_not_called()
 
@@ -131,9 +135,10 @@ def test_search_messages_match_all_response_without_messages_key() -> None:
     """match_all=True handles a response with no 'messages' key (e.g., 0 results)."""
     service = _make_service(list_side_effect=[{}])
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", match_all=True)
+    result = client.search_messages(query="invoice", match_all=True)
 
-    assert results == []
+    assert result.messages == []
+    assert result.pages == 1
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +155,10 @@ def test_search_messages_limited_by_max_results_single_page() -> None:
     )
 
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", max_results=5)
+    result = client.search_messages(query="invoice", max_results=5)
 
-    assert len(results) == 5
+    assert len(result.messages) == 5
+    assert result.pages == 1
     # Only one list call because max_results was satisfied within the first page
     assert service.users.return_value.messages.return_value.list.call_count == 1
 
@@ -171,9 +177,10 @@ def test_search_messages_limited_by_max_results_across_pages() -> None:
     )
 
     client = GmailClient(service)
-    results = client.search_messages(query="invoice", max_results=5)
+    result = client.search_messages(query="invoice", max_results=5)
 
-    assert len(results) == 5
+    assert len(result.messages) == 5
+    assert result.pages == 2
     # Two list calls: first page gave 3 results, second gave the remaining 2 needed
     assert service.users.return_value.messages.return_value.list.call_count == 2
 
@@ -187,9 +194,9 @@ def test_search_messages_default_max_results_is_25() -> None:
     )
 
     client = GmailClient(service)
-    results = client.search_messages(query="invoice")
+    result = client.search_messages(query="invoice")
 
-    assert len(results) == 25
+    assert len(result.messages) == 25
     first_call = service.users.return_value.messages.return_value.list.call_args_list[0]
     assert first_call.kwargs["maxResults"] == 25
 

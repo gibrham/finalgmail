@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from googleapiclient.discovery import Resource, build
 from googleapiclient.errors import HttpError
@@ -11,6 +11,11 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 from gcli.auth import load_credentials
 
 RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
+
+class SearchResult(NamedTuple):
+    messages: list[dict[str, str]]
+    pages: int
 
 
 def _is_retryable(exc: BaseException) -> bool:
@@ -117,9 +122,10 @@ class GmailClient:
 
     def search_messages(
         self, query: str, max_results: int = 25, match_all: bool = False
-    ) -> list[dict[str, str]]:
+    ) -> SearchResult:
         results: list[dict[str, str]] = []
         page_token: str | None = None
+        page_count = 0
 
         while True:
             if not match_all and len(results) >= max_results:
@@ -130,6 +136,7 @@ class GmailClient:
                 page_token=page_token,
                 max_results=batch_size,
             )
+            page_count += 1
             messages = response.get("messages", [])
             for message in messages:
                 full = self._get_message(message["id"])
@@ -153,7 +160,7 @@ class GmailClient:
             if not page_token:
                 break
 
-        return results
+        return SearchResult(messages=results, pages=page_count)
 
 
 def _header(headers: list[dict[str, str]], name: str) -> str:

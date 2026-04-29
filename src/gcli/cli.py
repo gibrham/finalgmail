@@ -165,7 +165,9 @@ def search_command(
         raise typer.BadParameter("Provide at least one term or filter.")
 
     client = GmailClient.from_credentials_dir(_resolve_credentials_dir(credentials_dir))
-    messages = client.search_messages(query=query, max_results=max_results, match_all=match_all)
+    result = client.search_messages(query=query, max_results=max_results, match_all=match_all)
+    messages = result.messages
+    pages = result.pages
     if not messages:
         console.print("[yellow]No emails found.[/yellow]")
         return
@@ -185,6 +187,9 @@ def search_command(
             message["snippet"],
         )
     console.print(table)
+    console.print(
+        f"[bold]{len(messages)}[/bold] email(s) found across [bold]{pages}[/bold] page(s)."
+    )
     if cache_output:
         cache_path = write_cache(
             command="search",
