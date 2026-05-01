@@ -3,7 +3,10 @@
   "steps": [
     {
       "id": "search",
-      "command": "gcli search"
+      "command": "gcli search",
+      "options": {
+        "match-all": "true"
+      }
     },
     {
       "id": "extract",

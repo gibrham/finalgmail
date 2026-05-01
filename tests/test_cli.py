@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from gcli.cache import CacheMetadata, CachePayload
 from gcli.cli import app, build_search_query
+from gcli.gmail import SearchResult
 
 runner = CliRunner()
 
@@ -58,19 +59,22 @@ def test_create_tag_calls_nested_creation(mocker, tmp_path: Path) -> None:
 
 def test_search_cache_option_writes_cache(mocker, tmp_path: Path) -> None:
     fake_client = mocker.Mock()
-    fake_client.search_messages.return_value = [
-        {
-            "id": "msg-1",
-            "from": "alice@example.com",
-            "to": "bob@example.com",
-            "cc": "",
-            "bcc": "",
-            "subject": "Hello",
-            "date": "Mon, 01 Jan 2026 10:00:00 +0000",
-            "snippet": "Contact us at support@example.com",
-            "body": "Contact us at support@example.com",
-        }
-    ]
+    fake_client.search_messages.return_value = SearchResult(
+        messages=[
+            {
+                "id": "msg-1",
+                "from": "alice@example.com",
+                "to": "bob@example.com",
+                "cc": "",
+                "bcc": "",
+                "subject": "Hello",
+                "date": "Mon, 01 Jan 2026 10:00:00 +0000",
+                "snippet": "Contact us at support@example.com",
+                "body": "Contact us at support@example.com",
+            }
+        ],
+        pages=1,
+    )
     mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
     write_cache_mock = mocker.patch(
         "gcli.cli.write_cache",
@@ -158,6 +162,30 @@ def test_non_interactive_visualize_fails_without_cache_and_never_prompts(
     result = runner.invoke(app, ["tools", "visualize"])
     assert result.exit_code != 0
     prompt_mock.assert_not_called()
+
+
+def test_search_match_all_passes_flag_to_client(mocker, tmp_path: Path) -> None:
+    fake_client = mocker.Mock()
+    fake_client.search_messages.return_value = SearchResult(messages=[], pages=1)
+    mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
+
+    result = runner.invoke(app, ["search", "invoice", "--match-all"])
+    assert result.exit_code == 0
+    fake_client.search_messages.assert_called_once()
+    _, kwargs = fake_client.search_messages.call_args
+    assert kwargs.get("match_all") is True
+
+
+def test_search_without_match_all_uses_default_max_results(mocker, tmp_path: Path) -> None:
+    fake_client = mocker.Mock()
+    fake_client.search_messages.return_value = SearchResult(messages=[], pages=1)
+    mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
+
+    result = runner.invoke(app, ["search", "invoice"])
+    assert result.exit_code == 0
+    fake_client.search_messages.assert_called_once()
+    _, kwargs = fake_client.search_messages.call_args
+    assert kwargs.get("match_all") is False
 
 
 def test_non_interactive_exall_fails_without_cache_and_never_prompts(

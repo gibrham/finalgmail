@@ -158,3 +158,63 @@ def test_emailgph_pipeline_config_exists() -> None:
     pipeline = load_pipeline("emailgph")
     assert pipeline.name == "emailgph"
     assert [step.id for step in pipeline.steps] == ["search", "extract", "visualize"]
+
+
+def test_pipeline_step_options_loaded_and_normalised() -> None:
+    pipeline = load_pipeline("emailgph")
+    search_step = next(s for s in pipeline.steps if s.id == "search")
+    assert search_step.options.get("match_all") == "true"
+
+
+def test_pipeline_step_options_flow_into_step_execute() -> None:
+    """Step options become pre-set inputs; the execute function receives them."""
+    search_spec = get_command_spec(search_command)
+    received: list[dict] = []
+
+    def capture_exec(step_inputs: dict, run_id: str) -> None:
+        received.append(dict(step_inputs))
+
+    step = PipelineStep(id="search", command=search_spec.command, options={"match_all": "true"})
+    registry = {search_spec.command: PipelineCommand(spec=search_spec, execute=capture_exec)}
+    output = io.StringIO()
+    console = Console(file=output, force_terminal=False, color_system=None)
+
+    run_pipeline(
+        pipeline=PipelineDefinition(name="test", steps=(step,)),
+        registry=registry,
+        from_step=None,
+        until_step=None,
+        verbose=False,
+        iext=False,
+        provided_inputs={"search.terms": "invoice"},
+        prompt_func=lambda *_args, **_kwargs: "",
+        console=console,
+    )
+    assert received[0]["match_all"] == "true"
+
+
+def test_pipeline_step_user_input_overrides_step_option() -> None:
+    """User --input values override step-level options."""
+    search_spec = get_command_spec(search_command)
+    received: list[dict] = []
+
+    def capture_exec(step_inputs: dict, run_id: str) -> None:
+        received.append(dict(step_inputs))
+
+    step = PipelineStep(id="search", command=search_spec.command, options={"match_all": "true"})
+    registry = {search_spec.command: PipelineCommand(spec=search_spec, execute=capture_exec)}
+    output = io.StringIO()
+    console = Console(file=output, force_terminal=False, color_system=None)
+
+    run_pipeline(
+        pipeline=PipelineDefinition(name="test", steps=(step,)),
+        registry=registry,
+        from_step=None,
+        until_step=None,
+        verbose=False,
+        iext=False,
+        provided_inputs={"search.terms": "invoice", "search.match_all": "false"},
+        prompt_func=lambda *_args, **_kwargs: "",
+        console=console,
+    )
+    assert received[0]["match_all"] == "false"
