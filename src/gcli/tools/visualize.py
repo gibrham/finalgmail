@@ -85,9 +85,15 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
             'label': 'data(label)',
             'background-color': '#1f77b4',
             'color': '#111',
-            'font-size': '10px',
+            'font-size': '12px',
             'text-wrap': 'wrap',
-            'text-max-width': '180px'
+            'text-max-width': '200px',
+            'text-valign': 'bottom',
+            'text-halign': 'center',
+            'text-margin-y': '6px',
+            'padding': '12px',
+            'width': '36px',
+            'height': '36px'
           }}
         }},
         {{
@@ -98,7 +104,10 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
             'line-color': '#999',
             'target-arrow-color': '#999',
             'label': 'data(type)',
-            'font-size': '9px'
+            'font-size': '10px',
+            'text-background-color': '#ffffff',
+            'text-background-opacity': 0.8,
+            'text-background-padding': '3px'
           }}
         }},
         {{
@@ -116,7 +125,18 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
           }}
         }}
       ],
-      layout: {{ name: 'cose', animate: false }}
+      layout: {{
+        name: 'cose',
+        animate: false,
+        idealEdgeLength: 250,
+        nodeRepulsion: 800000,
+        nodeOverlap: 80,
+        gravity: 0.15,
+        numIter: 1500,
+        coolingFactor: 0.995,
+        minTemp: 1.0,
+        padding: 80
+      }}
     }});
   </script>
 </body>
