@@ -529,7 +529,8 @@ _GRAPH_HTML_TEMPLATE = """\
       var latestTs = occs.length ? occs[0].timestamp : '';
       document.getElementById('panel-meta').innerHTML =
         '<span class="panel-meta-item">' +
-          '<svg viewBox="0 0 24 24" width="11" height="11" style="flex-shrink:0;fill:currentColor">' +
+          '<svg viewBox="0 0 24 24" width="11" height="11"'
+            + ' style="flex-shrink:0;fill:currentColor">' +
             '<path d="M20 3h-1V1h-2v2H7V1H5v2H4c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2' +
                     'h16c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 18H4V8h16v13z"/>' +
           '</svg>&nbsp;' + escHtml(latestTs ? formatTs(latestTs) : 'No date') +
@@ -543,7 +544,7 @@ _GRAPH_HTML_TEMPLATE = """\
         lines.push(e.data('type') + ':  ' + e.data('source') + '  \u2192  ' + e.data('target'));
       });
       var ctxText = lines.length
-        ? lines.slice(0, 5).join('\n') + (lines.length > 5 ? '\n\u2026' : '')
+        ? lines.slice(0, 5).join('\\n') + (lines.length > 5 ? '\\n\u2026' : '')
         : 'no direct context available';
       // Highlight the email address in context using split/join (no regex escaping needed)
       var ctxHtml      = escHtml(ctxText);
