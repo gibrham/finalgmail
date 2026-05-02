@@ -85,7 +85,6 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title}</title>
   <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
-  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
   <style>
     body {{ margin: 0; font-family: Arial, sans-serif; }}
     #cy {{ width: 100vw; height: 100vh; display: block; }}
@@ -95,7 +94,7 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
   <div id="cy"></div>
   <script>
     const elements = {payload};
-    cytoscape({{
+    const cy = cytoscape({{
       container: document.getElementById('cy'),
       elements,
       style: [
@@ -105,14 +104,12 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
             'label': 'data(label)',
             'background-color': '#1f77b4',
             'color': '#111',
-            // font scales with degree: base 11px, hubs up to 15px
-            'font-size': 'mapData(degree, 0, 10, 11, 15)',
+            'font-size': 'mapData(degree, 0, 10, 11, 15)', /* maps degree 0..10 → 11..15 px */
             'text-wrap': 'wrap',
             'text-max-width': '200px',
             'text-valign': 'bottom',
             'text-halign': 'center',
             'text-margin-y': '8px',
-            // node circle diameter comes from pre-computed size (30–90 px)
             'width': 'data(size)',
             'height': 'data(size)'
           }}
@@ -147,31 +144,67 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
         }}
       ],
       layout: {{
-        name: 'cose-bilkent',
+        name: 'cose',
         animate: false,
-        padding: 60,
-        // Hub nodes get much stronger repulsion; isolated nodes stay compact.
-        nodeRepulsion: function(node) {{
-          return 6000 * (1 + node.data('degree'));
-        }},
-        // Edges touching high-degree nodes should be longer.
-        idealEdgeLength: function(edge) {{
-          const srcDeg = edge.source().data('degree') || 0;
-          const tgtDeg = edge.target().data('degree') || 0;
-          return 120 + 20 * (srcDeg + tgtDeg);
-        }},
-        edgeElasticity: 0.1,
-        nestingFactor: 0.1,
-        gravity: 0.25,
-        numIter: 2500,
-        tile: true,
-        tilingPaddingVertical: 40,
-        tilingPaddingHorizontal: 40,
-        gravityRangeCompound: 1.5,
-        gravityCompound: 1.0,
-        gravityRange: 3.8
+        idealEdgeLength: 200,
+        nodeRepulsion: 1200000,
+        nodeOverlap: 60,
+        gravity: 0.15,
+        numIter: 2000,
+        coolingFactor: 0.995,
+        minTemp: 1.0,
+        padding: 60
       }}
     }});
+
+    cy.on('layoutstop', function() {{
+      /* cap iterations for large graphs to avoid UI freezing */
+      var maxIter = Math.max(3, Math.min(8, Math.floor(600 / (cy.nodes().length || 1))));
+      resolveOverlaps(cy, maxIter);
+    }});
+
+    function resolveOverlaps(cy, iterations) {{
+      var nodes = cy.nodes();
+      for (var iter = 0; iter < iterations; iter++) {{
+        var moved = false;
+        for (var i = 0; i < nodes.length; i++) {{
+          for (var j = i + 1; j < nodes.length; j++) {{
+            var a = nodes[i];
+            var b = nodes[j];
+            var posA = a.position();
+            var posB = b.position();
+            var sizeA = (a.data('size') || 30) / 2;
+            var sizeB = (b.data('size') || 30) / 2;
+            var labelPad = 50; /* extra buffer so labels don't run into each other */
+            var minDist = sizeA + sizeB + labelPad;
+            var dx = posB.x - posA.x;
+            var dy = posB.y - posA.y;
+            var dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+            if (dist < minDist) {{
+              var overlap = (minDist - dist);
+              var degA = a.data('degree') || 0;
+              var degB = b.data('degree') || 0;
+              var totalDeg = degA + degB + 2;
+              var pushA = (degB + 1) / totalDeg;
+              var pushB = (degA + 1) / totalDeg;
+              var nx = dx / dist;
+              var ny = dy / dist;
+              a.position({{
+                x: posA.x - nx * overlap * pushA,
+                y: posA.y - ny * overlap * pushA
+              }});
+              b.position({{
+                x: posB.x + nx * overlap * pushB,
+                y: posB.y + ny * overlap * pushB
+              }});
+              moved = true;
+            }}
+          }}
+        }}
+        if (!moved) break;
+      }}
+      cy.fit(cy.nodes(), 60);
+    }}
   </script>
 </body>
 </html>
