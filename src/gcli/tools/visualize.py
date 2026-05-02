@@ -24,16 +24,35 @@ VISUALIZE_COMMAND_SPEC = CommandSpec(
 )
 
 
+def _compute_degrees(graph: dict[str, Any]) -> dict[str, int]:
+    """Return a mapping of node id -> total degree (in + out)."""
+    degree: dict[str, int] = {}
+    for edge in graph.get("edges", []):
+        for key in ("from", "to"):
+            nid = edge.get(key, "")
+            if nid:
+                degree[nid] = degree.get(nid, 0) + 1
+    return degree
+
+
 def _to_cytoscape_elements(graph: dict[str, Any]) -> list[dict[str, Any]]:
+    degree = _compute_degrees(graph)
+    max_degree = max(degree.values(), default=1)
+
     elements: list[dict[str, Any]] = []
     for node in graph.get("nodes", []):
         email = node.get("email", "")
+        node_degree = degree.get(email, 0)
+        # Map degree onto a node diameter: isolated nodes ~30 px, hubs ~90 px.
+        size = 30 + int(60 * node_degree / max(max_degree, 1))
         elements.append(
             {
                 "data": {
                     "id": email,
                     "label": email,
                     "type": node.get("type", "EmailAddress"),
+                    "degree": node_degree,
+                    "size": size,
                 }
             }
         )
@@ -66,6 +85,7 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{title}</title>
   <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
   <style>
     body {{ margin: 0; font-family: Arial, sans-serif; }}
     #cy {{ width: 100vw; height: 100vh; display: block; }}
@@ -85,15 +105,16 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
             'label': 'data(label)',
             'background-color': '#1f77b4',
             'color': '#111',
-            'font-size': '12px',
+            // font scales with degree: base 11px, hubs up to 15px
+            'font-size': 'mapData(degree, 0, 10, 11, 15)',
             'text-wrap': 'wrap',
             'text-max-width': '200px',
             'text-valign': 'bottom',
             'text-halign': 'center',
-            'text-margin-y': '6px',
-            'padding': '12px',
-            'width': '36px',
-            'height': '36px'
+            'text-margin-y': '8px',
+            // node circle diameter comes from pre-computed size (30–90 px)
+            'width': 'data(size)',
+            'height': 'data(size)'
           }}
         }},
         {{
@@ -126,16 +147,29 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
         }}
       ],
       layout: {{
-        name: 'cose',
+        name: 'cose-bilkent',
         animate: false,
-        idealEdgeLength: 250,
-        nodeRepulsion: 800000,
-        nodeOverlap: 80,
-        gravity: 0.15,
-        numIter: 1500,
-        coolingFactor: 0.995,
-        minTemp: 1.0,
-        padding: 80
+        padding: 60,
+        // Hub nodes get much stronger repulsion; isolated nodes stay compact.
+        nodeRepulsion: function(node) {{
+          return 6000 * (1 + node.data('degree'));
+        }},
+        // Edges touching high-degree nodes should be longer.
+        idealEdgeLength: function(edge) {{
+          const srcDeg = edge.source().data('degree') || 0;
+          const tgtDeg = edge.target().data('degree') || 0;
+          return 120 + 20 * (srcDeg + tgtDeg);
+        }},
+        edgeElasticity: 0.1,
+        nestingFactor: 0.1,
+        gravity: 0.25,
+        numIter: 2500,
+        tile: true,
+        tilingPaddingVertical: 40,
+        tilingPaddingHorizontal: 40,
+        gravityRangeCompound: 1.5,
+        gravityCompound: 1.0,
+        gravityRange: 3.8
       }}
     }});
   </script>
