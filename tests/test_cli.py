@@ -4,7 +4,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from gcli.cache import CacheMetadata, CachePayload
+from gcli.cache import ArtifactMetadata, ArtifactPayload
 from gcli.cli import app, build_search_query
 from gcli.gmail import SearchResult
 
@@ -76,20 +76,25 @@ def test_search_cache_option_writes_cache(mocker, tmp_path: Path) -> None:
         pages=1,
     )
     mocker.patch("gcli.cli.GmailClient.from_credentials_dir", return_value=fake_client)
-    write_cache_mock = mocker.patch(
-        "gcli.cli.write_cache",
-        return_value=tmp_path / ".cache/search_1.jsonl",
+    write_artifact_mock = mocker.patch(
+        "gcli.cli.write_artifact",
+        return_value=tmp_path / ".artifacts/search_1.jsonl",
     )
 
-    result = runner.invoke(app, ["search", "invoice", "--cache"])
+    result = runner.invoke(app, ["search", "invoice", "--artifact"])
     assert result.exit_code == 0
-    write_cache_mock.assert_called_once()
-    assert write_cache_mock.call_args.kwargs["command"] == "search"
+    write_artifact_mock.assert_called_once()
+    assert write_artifact_mock.call_args.kwargs["command"] == "search"
 
 
-def test_tools_exall_uses_default_search_cache(mocker, tmp_path: Path) -> None:
-    payload = CachePayload(
-        metadata=CacheMetadata(command="search", timestamp="20260101T000000Z", args={}),
+def test_tools_exall_uses_input_artifact(mocker, tmp_path: Path) -> None:
+    payload = ArtifactPayload(
+        metadata=ArtifactMetadata(
+            command="search",
+            artifact_id="search_01JTEST000000000000000000",
+            ulid="01JTEST000000000000000000",
+            args={},
+        ),
         entries=[
             {
                 "id": "msg-1",
@@ -101,33 +106,49 @@ def test_tools_exall_uses_default_search_cache(mocker, tmp_path: Path) -> None:
                 "date": "Mon, 01 Jan 2026 10:00:00 +0000",
             }
         ],
-        path=tmp_path / ".cache/search_20260101T000000Z.jsonl",
+        path=tmp_path / ".artifacts/search_01JTEST000000000000000000.jsonl",
     )
-    load_mock = mocker.patch("gcli.tools.exall.load_latest_cache", return_value=payload)
+    load_mock = mocker.patch("gcli.tools.exall.load_artifact_reference", return_value=payload)
 
-    result = runner.invoke(app, ["tools", "exall"])
+    result = runner.invoke(
+        app,
+        ["tools", "exall", "--input-artifact", "search_01JTEST000000000000000000"],
+    )
     assert result.exit_code == 0
-    load_mock.assert_called_once_with("search", run_id=None)
+    load_mock.assert_called_once_with("search_01JTEST000000000000000000")
     assert "SENT_TO" in result.output
     assert "MENTIONS" in result.output
 
 
-def test_tools_exall_respects_from_cache_override(mocker, tmp_path: Path) -> None:
-    payload = CachePayload(
-        metadata=CacheMetadata(command="search", timestamp="20260101T000000Z", args={}),
+def test_tools_exall_respects_input_artifact(mocker, tmp_path: Path) -> None:
+    payload = ArtifactPayload(
+        metadata=ArtifactMetadata(
+            command="search",
+            artifact_id="search_01JTEST000000000000000000",
+            ulid="01JTEST000000000000000000",
+            args={},
+        ),
         entries=[],
-        path=tmp_path / ".cache/search_20260101T000000Z.jsonl",
+        path=tmp_path / ".artifacts/search_01JTEST000000000000000000.jsonl",
     )
-    load_mock = mocker.patch("gcli.tools.exall.load_latest_cache", return_value=payload)
+    load_mock = mocker.patch("gcli.tools.exall.load_artifact_reference", return_value=payload)
 
-    result = runner.invoke(app, ["tools", "exall", "--from-cache", "custom_search"])
+    result = runner.invoke(
+        app,
+        ["tools", "exall", "--input-artifact", "custom_search_01JTEST000000000000000001"],
+    )
     assert result.exit_code == 0
-    load_mock.assert_called_once_with("custom_search", run_id=None)
+    load_mock.assert_called_once_with("custom_search_01JTEST000000000000000001")
 
 
 def test_tools_visualize_writes_html(mocker, tmp_path: Path) -> None:
-    payload = CachePayload(
-        metadata=CacheMetadata(command="exall", timestamp="20260101T000000Z", args={}),
+    payload = ArtifactPayload(
+        metadata=ArtifactMetadata(
+            command="exall",
+            artifact_id="exall_01JTEST000000000000000000",
+            ulid="01JTEST000000000000000000",
+            args={},
+        ),
         entries=[
             {
                 "nodes": [{"type": "EmailAddress", "email": "alice@example.com"}],
@@ -141,14 +162,24 @@ def test_tools_visualize_writes_html(mocker, tmp_path: Path) -> None:
                 ],
             }
         ],
-        path=tmp_path / ".cache/exall_20260101T000000Z.jsonl",
+        path=tmp_path / ".artifacts/exall_01JTEST000000000000000000.jsonl",
     )
-    load_mock = mocker.patch("gcli.tools.visualize.load_latest_cache", return_value=payload)
+    load_mock = mocker.patch("gcli.tools.visualize.load_artifact_reference", return_value=payload)
     output_path = tmp_path / "graph.html"
 
-    result = runner.invoke(app, ["tools", "visualize", "--output", str(output_path)])
+    result = runner.invoke(
+        app,
+        [
+            "tools",
+            "visualize",
+            "--input-artifact",
+            "exall_01JTEST000000000000000000",
+            "--output",
+            str(output_path),
+        ],
+    )
     assert result.exit_code == 0
-    load_mock.assert_called_once_with("exall", run_id=None)
+    load_mock.assert_called_once_with("exall_01JTEST000000000000000000")
     html = output_path.read_text(encoding="utf-8")
     assert "cytoscape" in html
     assert "alice@example.com" in html

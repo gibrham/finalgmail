@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from datetime import UTC, datetime
 from email.utils import getaddresses
 from pathlib import Path
 from typing import Annotated, Any
@@ -13,7 +12,7 @@ from ladybug import Connection, Database
 from rich.console import Console
 from rich.table import Table
 
-from gcli.cache import load_latest_cache, write_cache
+from gcli.cache import build_artifact_id, generate_ulid, load_artifact_reference, write_artifact
 from gcli.command_meta import CommandInput, CommandSpec, command_contract
 
 EMAIL_PATTERN = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
@@ -47,11 +46,14 @@ def _escape_query_value(value: str) -> str:
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def _graph_db_path(base_dir: Path | None = None) -> Path:
-    cache_dir = (base_dir or Path.cwd()) / ".cache"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return cache_dir / f"exall_graph_{timestamp}.lbug"
+def _graph_db_path(base_dir: Path | None = None, *, artifact_id: str | None = None) -> Path:
+    artifacts_dir = (base_dir or Path.cwd()) / ".artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    if artifact_id and "_" in artifact_id:
+        ulid = artifact_id.rsplit("_", 1)[-1]
+    else:
+        ulid = generate_ulid()
+    return artifacts_dir / f"exall_{ulid}.lbug"
 
 
 def _materialize_graph_in_ladybug(
@@ -160,7 +162,9 @@ def _materialize_graph_in_ladybug(
 
 
 def build_email_graph(
-    messages: list[dict[str, Any]], *, db_path: Path | None = None
+    messages: list[dict[str, Any]],
+    *,
+    db_path: Path | None = None,
 ) -> dict[str, Any]:
     """Build an EmailAddress graph from messages and materialize it in Ladybug."""
     nodes: set[str] = set()
@@ -271,51 +275,58 @@ EXALL_COMMAND_SPEC = CommandSpec(
     command="gcli tools exall",
     interactive=False,
     inputs=(
-        CommandInput(name="from_cache", required=False, source="cache"),
-        CommandInput(name="cache_output", required=False, source="default"),
-        CommandInput(name="cache_run_id", required=False, source="cache"),
+        CommandInput(name="input_artifact", required=False, source="artifact"),
+        CommandInput(name="artifact_output", required=False, source="default"),
+        CommandInput(name="artifact_id", required=False, source="artifact"),
     ),
-    outputs=("graph_payload_cache", "ladybug_db"),
+    outputs=("graph_payload_artifact", "ladybug_db"),
 )
 
 
 @command_contract(EXALL_COMMAND_SPEC)
 def exall_command(
-    from_cache: Annotated[
+    input_artifact: Annotated[
         str | None,
-        typer.Option("--from-cache", help="Load latest cache from a specific command"),
+        typer.Option("--input-artifact", help="Upstream artifact id or file path"),
     ] = None,
-    cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
-    cache_run_id: Annotated[
+    artifact_output: Annotated[
+        bool,
+        typer.Option("--artifact", help="Save output graph payload as an artifact"),
+    ] = False,
+    artifact_id: Annotated[
         str | None,
-        typer.Option("--cache-run-id", help="Pipeline cache run identifier", hidden=True),
+        typer.Option("--artifact-id", help="Explicit artifact id", hidden=True),
     ] = None,
 ) -> None:
-    """Extract relationship edges from cached search data using Ladybug graph materialization."""
-    source_command = from_cache or "search"
+    """Extract relationship edges from search artifacts using Ladybug graph materialization."""
+    if not input_artifact:
+        raise typer.BadParameter("Missing --input-artifact.")
+    output_artifact_id = artifact_id if artifact_id else build_artifact_id("exall")
     try:
-        payload = load_latest_cache(source_command, run_id=cache_run_id)
+        payload = load_artifact_reference(input_artifact)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
-    graph = build_email_graph(payload.entries)
+    graph = build_email_graph(
+        payload.entries,
+        db_path=_graph_db_path(artifact_id=output_artifact_id),
+    )
     edges = graph["edges"]
     if not edges:
-        console.print("[yellow]No relationships found in cache.[/yellow]")
+        console.print("[yellow]No relationships found in input artifact.[/yellow]")
         return
 
     _render_edges(edges)
     _render_summary(edges)
     console.print(f"[green]Ladybug graph:[/green] {graph['ladybug_db_path']}")
-    if cache_output:
-        cache_path = write_cache(
+    if artifact_output:
+        artifact_path = write_artifact(
             command="exall",
             args={
-                "from_cache": source_command,
-                "source_cache_file": payload.path.name,
+                "input_artifact": payload.path.name,
                 "ladybug_db_path": graph["ladybug_db_path"],
             },
             entries=[graph],
-            run_id=cache_run_id,
+            artifact_id=output_artifact_id,
         )
-        console.print(f"[green]Saved cache:[/green] {cache_path}")
+        console.print(f"[green]Saved artifact:[/green] {artifact_path}")

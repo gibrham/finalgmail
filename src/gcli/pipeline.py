@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
 import typer
 from rich.console import Console
 
+from gcli.cache import generate_ulid
 from gcli.command_meta import CommandInput, CommandSpec
 
 
@@ -153,8 +152,7 @@ def _slice_steps(
 
 
 def _pipeline_run_id() -> str:
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return f"{stamp}_{uuid4().hex[:8]}"
+    return generate_ulid()
 
 
 def run_pipeline(

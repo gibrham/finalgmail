@@ -42,7 +42,7 @@ gcli search <name> [options]
 - `--label`: Filter by label
 - `--after`: Filter by date after
 - `--before`: Filter by date before
-- `--cache`: Save results to `.cache/search_<timestamp>.jsonl`
+- `--artifact`: Save results to `.artifacts/search_<ulid>.jsonl`
 
 **Example:**
 
@@ -50,10 +50,10 @@ gcli search <name> [options]
 gcli search "invoice" --from sender@example.com --label Finance
 ```
 
-Cache for chaining:
+Create an explicit output artifact:
 
 ```bash
-gcli search "invoice" --cache
+gcli search "invoice" --artifact
 ```
 
 ### gcli tag create
@@ -74,7 +74,7 @@ gcli tag create "Projects/2026"
 
 ### gcli tools exall
 
-Extracts sender/recipient communication and content mentions from cached search results, then builds a directional email relationship graph model:
+Extracts sender/recipient communication and content mentions from a `search` artifact, then builds a directional email relationship graph model:
 
 - Node type: `EmailAddress`
 - Edge types:
@@ -84,49 +84,51 @@ Extracts sender/recipient communication and content mentions from cached search 
 **Usage:**
 
 ```bash
-gcli tools exall [options]
+gcli tools exall --input-artifact <artifact-id-or-path> [options]
 ```
 
 **Options:**
 
-- `--from-cache <command>`: Load latest cache from the specified command (default upstream is `search`)
-- `--cache`: Save graph output to `.cache/exall_<timestamp>.jsonl`
+- `--input-artifact <id-or-path>`: Upstream artifact id or file path
+- `--artifact`: Save graph payload to `.artifacts/exall_<ulid>.jsonl`
 
 **Examples:**
 
 ```bash
-gcli tools exall
-gcli tools exall --from-cache search
-gcli tools exall --cache
+gcli tools exall --input-artifact search_01JXXXXXXXXXXXXXXX
+
+gcli tools exall \
+  --input-artifact .artifacts/search_01JXXXXXXXXXXXXXXX.jsonl \
+  --artifact
 ```
 
 ### gcli tools visualize
 
-Builds an interactive Cytoscape.js HTML graph from cached `exall` output.
+Builds an interactive Cytoscape.js HTML graph from an `exall` artifact.
 
 **Usage:**
 
 ```bash
-gcli tools visualize [options]
+gcli tools visualize --input-artifact <artifact-id-or-path> [options]
 ```
 
 **Options:**
 
-- `--from-cache <command>`: Load latest cache from command (default `exall`)
-- `--output <path>`: Output HTML file path (default `graph.html`)
+- `--input-artifact <id-or-path>`: Graph artifact id or file path
+- `--output <path>`: Output HTML file path (default `.artifacts/visualize_<ulid>.html`)
 
 **Examples:**
 
 ```bash
-gcli tools visualize
-gcli tools visualize --output ./reports/email-graph.html
-gcli tools visualize --from-cache exall --output graph.html
+gcli tools visualize --input-artifact exall_01JXXXXXXXXXXXXXXX
+gcli tools visualize --input-artifact exall_01JXXXXXXXXXXXXXXX --output ./reports/email-graph.html
 ```
 
 ### gcli run
 
-Runs a named pipeline from JSON configuration and orchestrates command execution with upfront input
-collection.
+Runs a named pipeline from JSON configuration and orchestrates command execution with upfront input collection.
+
+Pipeline runs precompute a single ULID and derive explicit artifact ids up front (`search_<ulid>`, `exall_<ulid>`, `visualize_<ulid>.html`) so each downstream step knows exactly which upstream artifact to consume.
 
 **Usage:**
 
@@ -147,5 +149,7 @@ gcli run <pipeline_name> [options]
 ```bash
 gcli run emailgph --input search.terms="invoice"
 gcli run emailgph --iext
-gcli run emailgph --from extract --until visualize --input search.terms="invoice"
+gcli run emailgph --from extract --until visualize \
+  --input search.terms="invoice" \
+  --input extract.input_artifact="search_01JXXXXXXXXXXXXXXX"
 ```

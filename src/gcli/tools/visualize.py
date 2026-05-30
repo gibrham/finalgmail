@@ -7,7 +7,7 @@ from typing import Annotated, Any
 import typer
 from rich.console import Console
 
-from gcli.cache import load_latest_cache
+from gcli.cache import build_artifact_id, load_artifact_reference
 from gcli.command_meta import CommandInput, CommandSpec, command_contract
 
 console = Console()
@@ -16,9 +16,8 @@ VISUALIZE_COMMAND_SPEC = CommandSpec(
     command="gcli tools visualize",
     interactive=False,
     inputs=(
-        CommandInput(name="from_cache", required=False, source="cache"),
+        CommandInput(name="input_artifact", required=False, source="artifact"),
         CommandInput(name="output", required=False, source="default"),
-        CommandInput(name="cache_run_id", required=False, source="cache"),
     ),
     outputs=("html_file",),
 )
@@ -754,34 +753,32 @@ def _build_html(elements: list[dict[str, Any]], title: str) -> str:
 
 @command_contract(VISUALIZE_COMMAND_SPEC)
 def visualize_command(
-    from_cache: Annotated[
+    input_artifact: Annotated[
         str | None,
-        typer.Option("--from-cache", help="Load latest cache from a specific command"),
+        typer.Option("--input-artifact", help="Upstream graph artifact id or file path"),
     ] = None,
     output: Annotated[
-        Path,
+        Path | None,
         typer.Option("--output", help="Output HTML file path"),
-    ] = Path("graph.html"),
-    cache_run_id: Annotated[
-        str | None,
-        typer.Option("--cache-run-id", help="Pipeline cache run identifier", hidden=True),
     ] = None,
 ) -> None:
-    """Render a cached graph as a Cytoscape.js HTML visualization."""
-    source_command = from_cache or "exall"
+    """Render a graph artifact as a Cytoscape.js HTML visualization."""
+    if not input_artifact:
+        raise typer.BadParameter("Missing --input-artifact.")
     try:
-        payload = load_latest_cache(source_command, run_id=cache_run_id)
+        payload = load_artifact_reference(input_artifact)
     except FileNotFoundError as exc:
         raise typer.BadParameter(str(exc)) from exc
 
     if not payload.entries:
-        raise typer.BadParameter(f"Cache for '{source_command}' is empty.")
+        raise typer.BadParameter("Input artifact is empty.")
     graph = payload.entries[0]
     if "nodes" not in graph or "edges" not in graph:
-        raise typer.BadParameter(f"Cache for '{source_command}' does not contain graph data.")
+        raise typer.BadParameter("Input artifact does not contain graph data.")
 
     elements = _to_cytoscape_elements(graph)
     html = _build_html(elements, title="gcli Email Graph")
+    output = output or (Path(".artifacts") / f"{build_artifact_id('visualize')}.html")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(html, encoding="utf-8")
     console.print(f"[green]Visualization written:[/green] {output.resolve()}")

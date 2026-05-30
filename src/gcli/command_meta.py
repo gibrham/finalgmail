@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
-InputSource = Literal["user", "cache", "default"]
+InputSource = Literal["user", "artifact", "default"]
 
 
 @dataclass(frozen=True)

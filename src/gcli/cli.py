@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.table import Table
 
 from gcli.auth import initialize_token
-from gcli.cache import write_cache
+from gcli.cache import write_artifact
 from gcli.command_meta import CommandInput, CommandSpec, command_contract, get_command_spec
 from gcli.config import default_credentials_dir
 from gcli.gmail import GmailClient
@@ -68,10 +68,10 @@ SEARCH_COMMAND_SPEC = CommandSpec(
         CommandInput(name="max_results", required=False, source="default"),
         CommandInput(name="match_all", required=False, source="default"),
         CommandInput(name="credentials_dir", required=False, source="default"),
-        CommandInput(name="cache_output", required=False, source="default"),
-        CommandInput(name="cache_run_id", required=False, source="cache"),
+        CommandInput(name="artifact_output", required=False, source="default"),
+        CommandInput(name="artifact_id", required=False, source="artifact"),
     ),
-    outputs=("search_cache",),
+    outputs=("search_artifact",),
 )
 
 
@@ -141,14 +141,17 @@ def search_command(
     match_all: Annotated[
         bool, typer.Option("--match-all", help="Return all results (ignores --max-results)")
     ] = False,
-    cache_output: Annotated[bool, typer.Option("--cache", help="Save output to cache")] = False,
+    artifact_output: Annotated[
+        bool,
+        typer.Option("--artifact", help="Save output to an artifact file"),
+    ] = False,
     credentials_dir: Annotated[
         Path | None,
         typer.Option(help="Credentials directory containing secrets.json and token.json"),
     ] = None,
-    cache_run_id: Annotated[
+    artifact_id: Annotated[
         str | None,
-        typer.Option("--cache-run-id", help="Pipeline cache run identifier", hidden=True),
+        typer.Option("--artifact-id", help="Explicit output artifact id", hidden=True),
     ] = None,
 ) -> None:
     query = build_search_query(
@@ -190,8 +193,8 @@ def search_command(
     console.print(
         f"[bold]{len(messages)}[/bold] email(s) found across [bold]{pages}[/bold] page(s)."
     )
-    if cache_output:
-        cache_path = write_cache(
+    if artifact_output:
+        artifact_path = write_artifact(
             command="search",
             args={
                 "terms": terms or [],
@@ -205,9 +208,9 @@ def search_command(
                 "max_results": max_results,
             },
             entries=messages,
-            run_id=cache_run_id,
+            artifact_id=artifact_id,
         )
-        console.print(f"[green]Saved cache:[/green] {cache_path}")
+        console.print(f"[green]Saved artifact:[/green] {artifact_path}")
 
 
 def _execute_search_step(step_inputs: dict[str, str | None], run_id: str) -> None:
@@ -229,27 +232,26 @@ def _execute_search_step(step_inputs: dict[str, str | None], run_id: str) -> Non
         before=step_inputs.get("before"),
         max_results=max_results,
         match_all=match_all,
-        cache_output=True,
+        artifact_output=True,
         credentials_dir=credentials_dir,
-        cache_run_id=run_id,
+        artifact_id=f"search_{run_id}",
     )
 
 
 def _execute_exall_step(step_inputs: dict[str, str | None], run_id: str) -> None:
     exall_command(
-        from_cache=step_inputs.get("from_cache") or "search",
-        cache_output=True,
-        cache_run_id=run_id,
+        input_artifact=step_inputs.get("input_artifact") or f"search_{run_id}",
+        artifact_output=True,
+        artifact_id=f"exall_{run_id}",
     )
 
 
 def _execute_visualize_step(step_inputs: dict[str, str | None], run_id: str) -> None:
     output_raw = (step_inputs.get("output") or "").strip()
-    output = Path(output_raw) if output_raw else Path("graph.html")
+    output = Path(output_raw) if output_raw else Path(".artifacts") / f"visualize_{run_id}.html"
     visualize_command(
-        from_cache=step_inputs.get("from_cache") or "exall",
+        input_artifact=step_inputs.get("input_artifact") or f"exall_{run_id}",
         output=output,
-        cache_run_id=run_id,
     )
 
 

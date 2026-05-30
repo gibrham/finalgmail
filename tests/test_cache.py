@@ -1,61 +1,43 @@
 from __future__ import annotations
 
-from gcli.cache import load_cache, resolve_latest_cache, write_cache
+from gcli.cache import (
+    build_artifact_id,
+    load_artifact,
+    load_artifact_reference,
+    write_artifact,
+)
 
 
-def test_cache_round_trip(tmp_path) -> None:
-    cache_path = write_cache(
+def test_artifact_round_trip(tmp_path) -> None:
+    artifact_path = write_artifact(
         command="search",
+        artifact_id="search_01JTEST000000000000000000",
         args={"terms": ["invoice"]},
         entries=[{"id": "1"}, {"id": "2"}],
         base_dir=tmp_path,
-        timestamp="20260101T000000Z",
     )
 
-    payload = load_cache(cache_path)
+    payload = load_artifact(artifact_path)
     assert payload.metadata.command == "search"
-    assert payload.metadata.timestamp == "20260101T000000Z"
+    assert payload.metadata.artifact_id == "search_01JTEST000000000000000000"
+    assert payload.metadata.ulid == "01JTEST000000000000000000"
     assert payload.metadata.args == {"terms": ["invoice"]}
-    assert payload.metadata.run_id is None
     assert payload.entries == [{"id": "1"}, {"id": "2"}]
 
 
-def test_resolve_latest_cache_uses_newest_timestamp(tmp_path) -> None:
-    write_cache(
-        command="search",
-        args={},
-        entries=[],
-        base_dir=tmp_path,
-        timestamp="20260101T000000Z",
-    )
-    expected = write_cache(
-        command="search",
-        args={},
-        entries=[],
-        base_dir=tmp_path,
-        timestamp="20260101T010000Z",
-    )
-
-    latest = resolve_latest_cache("search", base_dir=tmp_path)
-    assert latest == expected
+def test_build_artifact_id_uses_command_prefix() -> None:
+    artifact_id = build_artifact_id("gcli tools exall", ulid="01JULID000000000000000000")
+    assert artifact_id == "gcli_tools_exall_01JULID000000000000000000"
 
 
-def test_resolve_latest_cache_filters_by_run_id(tmp_path) -> None:
-    baseline = write_cache(
+def test_load_artifact_reference_supports_id_lookup(tmp_path) -> None:
+    write_artifact(
         command="search",
+        artifact_id="search_01JAAA000000000000000000",
         args={},
         entries=[{"id": "base"}],
         base_dir=tmp_path,
-        timestamp="20260101T000000Z",
-    )
-    pipeline_cache = write_cache(
-        command="search",
-        args={},
-        entries=[{"id": "run"}],
-        base_dir=tmp_path,
-        timestamp="20260101T010000Z",
-        run_id="run-1",
     )
 
-    assert resolve_latest_cache("search", base_dir=tmp_path) == baseline
-    assert resolve_latest_cache("search", base_dir=tmp_path, run_id="run-1") == pipeline_cache
+    payload = load_artifact_reference("search_01JAAA000000000000000000", base_dir=tmp_path)
+    assert payload.entries == [{"id": "base"}]
